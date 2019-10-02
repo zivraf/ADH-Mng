@@ -20,26 +20,26 @@ The following are samples for ADH-Mng usage as an interactive utility
 
 ### Analyze existing environment
 Read all of the host groups and hosts in the subscription, build an object representation and save it to a local file for future use. 
-** python examples\adh_mng.py analyze **
+**python examples\adh_mng.py analyze **
 
 Read the topology in a single resource group
-** python examples\adh_mng.py analyze --resourcegroup DH1-RG **
+**python examples\adh_mng.py analyze --resourcegroup DH1-RG **
 
 ### Host Recommendation 
 Recommend the best of for a VM somewhere 
-** python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 ** 
+**python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 ** 
 
 Recommend the best of for a VM somewhere in the region
-** python adh_mng.py recommend --resourcegroup DH1-RG -size Standard_D8s_v3 --location eastus2 ** 
+**python adh_mng.py recommend --resourcegroup DH1-RG -size Standard_D8s_v3 --location eastus2 ** 
 
 Recommend the best of for a VM somewhere in an availability zone 
-** python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 --location eastus2 --zone 2 ** 
+**python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 --location eastus2 --zone 2 ** 
 
 Recommend the best of for a VM using fault domains
-** python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 --location eastus2 --faultdomain 1 ** 
+**python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 --location eastus2 --faultdomain 1 ** 
 
 Recommend the best of for a VM somewhere in an availability zone and fault domain
-** python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 --location eastus2 -zone 2  ** --faultdomain 1 
+**python adh_mng.py recommend -resourcegroup DH1-RG --size Standard_D8s_v3 --location eastus2 -zone 2  ** --faultdomain 1 
 
 
 Note: This is not an official Microsoft library, just some REST wrappers to make it easier to call the Azure REST API. For the official Microsoft Azure library for Python please go here: <a href="https://github.com/Azure/azure-sdk-for-python">https://github.com/Azure/azure-sdk-for-python</a>.
