@@ -52,7 +52,7 @@ def create_dh(access_token, subscription_id, resource_group, dhg_name,
                         '/subscriptions/', subscription_id,
                         '/resourceGroups/', resource_group,
                         '/providers/Microsoft.Compute/hostgroups/', dhg_name,
-                        '/', dh_name,
+                        '/hosts/', dh_name,
                         '?api-version=', COMP_API])
     dhg_body = {'location': location}
     host_sku = {'name': dh_sku}    
@@ -212,7 +212,7 @@ def get_dh(access_token, subscription_id, resource_group,dhg_name, dh_name):
                         '/subscriptions/', subscription_id,
                         '/resourceGroups/', resource_group,
                         '/providers/Microsoft.Compute/hostgroups/', dhg_name,
-                        '/hosts,',dh_name,
+                        '/hosts/',dh_name,
                         '?$expand=instanceView&api-version=', COMP_API])
     return do_get_next(endpoint, access_token)
 

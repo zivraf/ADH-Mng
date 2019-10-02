@@ -2,7 +2,9 @@
 import json
 import sys
 
-import azurerm
+from adh_return import *
+from adh_crp import *
+
 import logging
 
 log_format = " %(asctime)s [%(levelname)s] %(message)s"
@@ -15,12 +17,14 @@ class SKUS:
         "Standard_D8s_v3":{"cpu_count":8,"hyper_threading":2,"mem_size":32}, \
         "Standard_D16s_v3":{"cpu_count":16,"hyper_threading":2,"mem_size":64}, \
         "Standard_D32s_v3":{"cpu_count":32,"hyper_threading":2,"mem_size":128}, \
+        "Standard_D48s_v3":{"cpu_count":48,"hyper_threading":2,"mem_size":192}, \
         "Standard_D64s_v3":{"cpu_count":64,"hyper_threading":2,"mem_size":256}, \
         "Standard_E2s_v3":{"cpu_count":2,"hyper_threading":2,"mem_size":16}, \
         "Standard_E4s_v3":{"cpu_count":4,"hyper_threading":2,"mem_size":32}, \
         "Standard_E8s_v3":{"cpu_count":8,"hyper_threading":2,"mem_size":64}, \
         "Standard_E16s_v3":{"cpu_count":16,"hyper_threading":2,"mem_size":128}, \
         "Standard_E32s_v3":{"cpu_count":32,"hyper_threading":2,"mem_size":256}, \
+        "Standard_E48s_v3":{"cpu_count":48,"hyper_threading":2,"mem_size":384}, \
         "Standard_E64s_v3":{"cpu_count":64,"hyper_threading":2,"mem_size":432} \
              }
     host_skus = {"DSv3-Type1":{"core_count":64,"mem_size":440}, \
@@ -31,13 +35,19 @@ class SKUS:
     host_sku_to_vm_skus = {"DSv3-Type1":{"Standard_D2s_v3","Standard_D4s_v3","Standard_D8s_v3", \
         "Standard_D16s_v3","Standard_D32s_v3","Standard_D64s_v3"}, \
         "DSv3-Type2":{"Standard_D2s_v3","Standard_D4s_v3","Standard_D8s_v3", \
-        "Standard_D16s_v3","Standard_D32s_v3","Standard_D64s_v3"} , \
+        "Standard_D16s_v3","Standard_D32s_v3","Standard_D48s_v3","Standard_D64s_v3"} , \
         "ESv3-Type1":{"Standard_E2s_v3","Standard_E4s_v3","Standard_E8s_v3", \
-        "Standard_E16s_v3","Standard_E32s_v3","Standard_E64s_v3"} , \
+        "Standard_E16s_v3","Standard_E32s_v3","Standard_E48s_v3","Standard_E64s_v3"} , \
         "ESv3-Type2":{"Standard_E2s_v3","Standard_E4s_v3","Standard_E8s_v3", \
         "Standard_E16s_v3","Standard_E32s_v3","Standard_E64s_v3"},
         "FSv2-Type2":{"Standard_F2s_v2","Standard_F4s_v2","Standard_F8s_v2", \
         "Standard_F16s_v2","Standard_F32s_v2","Standard_F64s_v2"} } 
+    
+    def host_sku_for_vm_size (self,vm_size):
+        for host_sku,vm_sizes in self.host_sku_to_vm_skus.items():
+           if vm_size in vm_sizes:
+               return host_sku
+        return None
 
 class VM:
     def __init__(self):            
@@ -75,6 +85,9 @@ class Host:
         self.sku = ""
         self.vm_list = {}
         self.fault_domain = ""
+        self.subscription_id =""
+        self.resource_group=""
+        self.allocatableVMs ={}
 
         # calculated host attributes
         self.total_cores = 0
@@ -107,7 +120,7 @@ class Host:
         logger.debug ("DedicatedHost: %s, group %s, %s, FD: %s ,%d VMs, Utilization(used/total): Cores %d / %d; Mem %d / %d", \
             self.name,self.group_name, self.sku, self.fault_domain, len(self.vm_list), self.utilized_cores, self.total_cores,self.utilized_mem, self.total_mem)
     
-    def rank_allocation(self,vm_size):
+    def rank_allocation_OLD(self,vm_size):
         vm_size_list = SKUS.host_sku_to_vm_skus[self.sku]
         if vm_size not in SKUS.host_sku_to_vm_skus[self.sku]:
             # not a supported size for family
@@ -119,16 +132,28 @@ class Host:
             return 0.0
         return  max (req_cores/self.available_cores , req_mem/self.available_mem)        
 
+    def rank_allocation(self,vm_size):
+        vm_size_list = SKUS.host_sku_to_vm_skus[self.sku]
+        # First, check if the VM size is even supported            
+        if vm_size in self.allocatableVMs:
+           return self.allocatableVMs[vm_size]
+        return 0
+        
+
    
-    def populate_host (self, curr_host, dhg_name):
+    def populate_host (self, curr_host, dhg_name,subscription_id, access_token):
         '''Populate a dedicated host with host object including VM IDs
             Args:
                 curr_host (str): Dedicated Host JSON object 
         '''
+        self.subscription_id = subscription_id
         self.name = curr_host['name']
         self.sku = curr_host['sku']['name']
         self.location = curr_host['location']
         self.id = curr_host['id']
+        resource_id = self.id.split("/")
+        self.resource_group =(resource_id[4])
+
         self.group_name = dhg_name
         if 'faultDomain' in curr_host['properties']:
             self.fault_domain = curr_host['properties']['faultDomain']
@@ -137,11 +162,12 @@ class Host:
             vm.id = curr_vm['id'].upper()
             self.vm_list[vm.id]=vm
             # logger.debug ("populate a VM %s",vm.id)
+        host_instance_view = get_dh(access_token, self.subscription_id, self.resource_group,self.group_name, self.name)
+        for allocable_sku in host_instance_view['properties']['instanceView']['availableCapacity']['allocatableVMs']:
+            self.allocatableVMs[allocable_sku['vmSize']]=int(allocable_sku['count'])
 
     def init(self,host_obj):
         print ("TBD")
-
-
 
 class HostGroup:
     def __init__(self):            
@@ -150,24 +176,27 @@ class HostGroup:
         self.name = ""
         self.location = ""
         self.az = ""
+        self.subscription_id = ""
         self.host_list = {}
 
     def populate_host_group(self, dhg,access_token, subscription_id,resource_group):
         # logger.debug ("HostGroup:populate_cache")
         self.name = dhg['name']
         self.location = dhg['location']
+        self.subscription_id = subscription_id
         self.id = dhg['id']
-        if dhg['zones']:
+        if 'zones' in dhg:
             self.az= dhg['zones'][0]   
         
         resource_id = dhg['id'].split("/")
         self.resource_group =(resource_id[4])
-        hosts_json = azurerm.list_dh(access_token, subscription_id,self.resource_group,dhg['name'])    
+        # hosts_json = azurerm.list_dh(access_token, subscription_id,self.resource_group,dhg['name'])    
+        hosts_json = list_dh(access_token, subscription_id,self.resource_group,dhg['name'])    
             
         logger.debug ("HostGroup:%s, Location %s, AZ %s,  %s with %d hosts", self.name, self.location, self.az,self.id, len(hosts_json['value']))
         for curr_host in hosts_json['value']:
             dh = Host()
-            dh.populate_host (curr_host, self.name)
+            dh.populate_host (curr_host, self.name, subscription_id,access_token)
             self.host_list[dh.name]= dh
 
          
@@ -196,5 +225,38 @@ class DedicateHostCache:
                             vm.populate_vm (vm_list[vm_id])
                     host.calculate_utilization()
                         
+    def build_cache (self,access_token, subscription_id,location, resource_group, host_group):
+        '''Analyze a Dedicated Host Group.
 
-    
+        Args:
+            access_token (str): A valid Azure authentication token.
+            subscription_id (str): Azure subscription id.
+            resource_group (str): Azure resource group name.
+            location (str): Azure region. E.g. westus.
+            host_group (str): A specific dedicated host group to analyze (optional)
+
+        Returns:
+            Object representation of the dedicated host group.
+        '''
+        logger.debug ("adh_cache: build_cache")
+        if not resource_group:
+            dhg_list = list_dhg_sub(access_token, subscription_id)
+            #NO-VM vm_list = list_vms_sub(access_token,subscription_id)
+        elif resource_group  and not host_group:
+            dhg_list = list_dhg(access_token, subscription_id,resource_group)
+            #NO-VM vm_list = list_vms(access_token,subscription_id,resource_group)
+        else:
+            logger.warn ("dhg_mng : analyze_dhg nunsupported parameters")
+            return ADH_Return (-1,'analyze_dhg nunsupported parameters')
+        if 'error' in dhg_list:
+            logger.warn ("dhg_mng : analyze_dhg returned error:"+dhg_list['error']['code'])
+            return ADH_Return (-1,'analyze_dhg internal error')
+        self.populate_host_groups(dhg_list,access_token, subscription_id, resource_group)
+        return ADH_Return (0,'success')
+
+        #NO-VM vm_dictionary={}
+        #NO-VM for vm in vm_list['value']:
+        #NO-VM     vm_dictionary[vm['id'].upper()]=vm
+        
+        #NO-VM resource_group(vm_dictionary)
+        
